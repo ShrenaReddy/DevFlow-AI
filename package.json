@@ -1,0 +1,17 @@
+{
+  "name": "devflow-ai",
+  "version": "1.0.0",
+  "description": "AI-powered project blueprint generator",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}
