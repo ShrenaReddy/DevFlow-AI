@@ -2,7 +2,7 @@
 
 > **Transform your project idea into a complete development blueprint using AI.**
 
-DevFlow AI is an AI-powered project planning platform that helps developers convert a simple idea into a structured software development roadmap. It generates project summaries, recommended tech stacks, folder structures, APIs, architecture diagrams, implementation roadmaps, AI guidance, and much more—all in a beautiful modern dashboard.
+DevFlow AI is an AI-powered project planning platform that helps developers convert a simple idea into a structured software development roadmap. It generates project summaries, recommended tech stacks, folder structures, APIs, architecture diagrams, implementation roadmaps, deployment checklist, and much more—all in a beautiful modern dashboard.
 
 ---
 
@@ -21,6 +21,7 @@ Includes:
 - Challenges
 - AI Implementation Tips
 - Project Difficulty Score
+- Deployment checklist
 
 ---
 
@@ -216,6 +217,6 @@ DevFlow AI generates a complete project plan within seconds, allowing developers
 
 **Shrena Reddy**
 
-Developed as a submission for the **Being Infinity AI Hackathon**, showcasing the use of Generative AI to simplify software project planning and architecture design.
+Developed as a submission for the **BeingInfinity Hackathon**, showcasing the use of Generative AI to simplify software project planning and architecture design.
 
 ---
