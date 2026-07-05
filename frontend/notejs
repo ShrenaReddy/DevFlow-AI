@@ -15,17 +15,12 @@ const focusSelect = document.getElementById("focus-select");
 const teamSelect = document.getElementById("team-select");
 const progressFill = document.getElementById("loading-progress-fill");
 const bentoGrid = document.getElementById("bento-grid");
-const newBlueprintBtn = document.getElementById("new-blueprint-btn");
+const backBtn = document.getElementById("back-btn");
 const exportBtn = document.getElementById("export-btn");
-const exportMdBtn = document.getElementById("export-md-btn");
 const projectIdeaEcho = document.getElementById("project-idea-echo");
-const metaProject = document.getElementById("meta-project");
-const metaDuration = document.getElementById("meta-duration");
-const metaUpdated = document.getElementById("meta-updated");
 
 let currentBlueprint = null;
 let currentIdea = "";
-let currentProjectTitle = "";
 
 // ---------------- Generate flow ----------------
 
@@ -48,7 +43,6 @@ async function handleGenerate() {
   showLoadingOverlay();
 
   const stepTimer = runLoadingSteps();
-  const startTime = performance.now();
 
   try {
     const config = {
@@ -57,12 +51,11 @@ async function handleGenerate() {
       teamSize: teamSelect ? teamSelect.value : undefined,
     };
     const blueprint = await fetchBlueprint(idea, config);
-    const durationSeconds = (performance.now() - startTime) / 1000;
     currentBlueprint = blueprint;
     // ensure the loading animation has time to feel premium
     await stepTimer;
     hideLoadingOverlay();
-    renderDashboard(blueprint, idea, durationSeconds);
+    renderDashboard(blueprint, idea);
     switchToDashboard();
   } catch (err) {
     await stepTimer.catch(() => {});
@@ -138,44 +131,27 @@ function switchToDashboard() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-if (newBlueprintBtn) {
-  newBlueprintBtn.addEventListener("click", () => {
-    dashboardView.classList.add("hidden");
-    landingView.classList.remove("hidden");
-    bentoGrid.innerHTML = "";
-  });
-} else {
-  console.warn("[DevFlow AI] #new-blueprint-btn not found in the DOM — check that index.html matches this index.js.");
-}
+backBtn.addEventListener("click", () => {
+  dashboardView.classList.add("hidden");
+  landingView.classList.remove("hidden");
+  bentoGrid.innerHTML = "";
+});
 
 // ---------------- Rendering ----------------
 
-function renderDashboard(bp, idea, durationSeconds) {
+function renderDashboard(bp, idea) {
   projectIdeaEcho.textContent = `"${idea}"`;
-  currentProjectTitle = deriveProjectTitle(idea);
   bentoGrid.innerHTML = "";
-
-  if (metaProject) metaProject.textContent = currentProjectTitle;
-  if (metaDuration) metaDuration.textContent = durationSeconds ? `${durationSeconds.toFixed(1)}s` : "—";
-  if (metaUpdated) {
-    metaUpdated.textContent = new Date().toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
 
   const cards = [
     buildSummaryCard(bp),
     buildTechStackCard(bp),
-    buildArchitectureCard(bp),
     buildFolderCard(bp),
     buildRoadmapCard(bp),
     buildFeaturesCard(bp),
     buildApisCard(bp),
     buildChallengesCard(bp),
     buildTipsCard(bp),
-    buildDeploymentCard(bp),
     buildDifficultyCard(bp),
   ];
 
@@ -185,17 +161,6 @@ function renderDashboard(bp, idea, durationSeconds) {
     bentoGrid.appendChild(card);
     attachTilt(card);
   });
-
-  // Render Lucide icons (they're injected as <i data-lucide="..."> placeholders)
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
-}
-
-function deriveProjectTitle(idea) {
-  const cleaned = idea.trim().replace(/\s+/g, " ");
-  const capitalized = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-  return capitalized.length > 48 ? capitalized.slice(0, 45) + "…" : capitalized;
 }
 
 function el(html) {
@@ -207,87 +172,9 @@ function el(html) {
 function buildSummaryCard(bp) {
   return el(`
     <div class="bento-card card-summary">
-      <div class="card-icon"><i data-lucide="file-text"></i></div>
+      <div class="card-icon">📋</div>
       <div class="card-title">Project Summary</div>
       <div class="card-body">${escapeHtml(bp.summary || "")}</div>
-    </div>
-  `);
-}
-
-function buildArchitectureCard(bp) {
-  const stack = bp.techStack || {};
-  const frontend = stack.frontend || "React";
-  const backend = stack.backend || "Express";
-  const database = stack.database || "MongoDB";
-  const apiLabel = (bp.apis && bp.apis[0] && bp.apis[0].name) || "Gemini API";
-
-  // Layout: 4 stacked nodes (Browser -> Frontend -> Backend -> Database),
-  // with a branch from Backend out to the AI API node.
-  const nodeW = 200, nodeH = 56, x = 40;
-  const ys = [20, 110, 200, 290];
-  const cx = x + nodeW / 2;
-  const geminiX = 320, geminiY = 200;
-
-  const nodes = [
-    { label: "Browser", sub: "Client", y: ys[0] },
-    { label: frontend, sub: "Frontend", y: ys[1] },
-    { label: backend, sub: "Backend", y: ys[2] },
-    { label: database, sub: "Database", y: ys[3] },
-  ];
-
-  const nodeSvg = nodes
-    .map(
-      (n) => `
-      <g>
-        <rect class="arch-node-rect" x="${x}" y="${n.y}" width="${nodeW}" height="${nodeH}" rx="14"/>
-        <text class="arch-node-label" x="${cx}" y="${n.y + 24}" text-anchor="middle">${escapeHtml(n.label)}</text>
-        <text class="arch-node-sub" x="${cx}" y="${n.y + 40}" text-anchor="middle">${escapeHtml(n.sub)}</text>
-      </g>`
-    )
-    .join("");
-
-  // Vertical connecting lines + a flowing dot animated along each one
-  const lines = [];
-  for (let i = 0; i < nodes.length - 1; i++) {
-    const y1 = nodes[i].y + nodeH;
-    const y2 = nodes[i + 1].y;
-    lines.push(`
-      <path id="arch-line-${i}" class="arch-line" d="M${cx},${y1} L${cx},${y2}"/>
-      <circle class="arch-dot" r="4">
-        <animateMotion dur="2s" repeatCount="indefinite" begin="${i * 0.3}s">
-          <mpath href="#arch-line-${i}"/>
-        </animateMotion>
-      </circle>`);
-  }
-
-  // Diagonal branch from Backend to the AI API node
-  const backendY = nodes[2].y + nodeH / 2;
-  lines.push(`
-    <path id="arch-line-branch" class="arch-line" d="M${x + nodeW},${backendY} L${geminiX},${geminiY + 28}"/>
-    <circle class="arch-dot" r="4">
-      <animateMotion dur="2.4s" repeatCount="indefinite" begin="0.5s">
-        <mpath href="#arch-line-branch"/>
-      </animateMotion>
-    </circle>`);
-
-  const geminiNode = `
-    <g>
-      <rect class="arch-gemini-rect" x="${geminiX}" y="${geminiY}" width="180" height="56" rx="14"/>
-      <text class="arch-node-label" x="${geminiX + 90}" y="${geminiY + 24}" text-anchor="middle">${escapeHtml(apiLabel)}</text>
-      <text class="arch-node-sub" x="${geminiX + 90}" y="${geminiY + 40}" text-anchor="middle">AI Engine</text>
-    </g>`;
-
-  return el(`
-    <div class="bento-card card-architecture">
-      <div class="card-icon"><i data-lucide="network"></i></div>
-      <div class="card-title">Architecture</div>
-      <div class="card-body">
-        <svg class="architecture-svg" viewBox="0 0 540 360" xmlns="http://www.w3.org/2000/svg">
-          ${lines.join("")}
-          ${nodeSvg}
-          ${geminiNode}
-        </svg>
-      </div>
     </div>
   `);
 }
@@ -305,7 +192,7 @@ function buildTechStackCard(bp) {
     .join("");
   return el(`
     <div class="bento-card card-techstack">
-      <div class="card-icon"><i data-lucide="cpu"></i></div>
+      <div class="card-icon">🛠️</div>
       <div class="card-title">Tech Stack</div>
       <div class="card-body">${rows || "No stack suggested."}</div>
     </div>
@@ -324,7 +211,7 @@ function buildFolderCard(bp) {
     .join("\n");
   return el(`
     <div class="bento-card card-folder">
-      <div class="card-icon"><i data-lucide="folder-tree"></i></div>
+      <div class="card-icon">🗂️</div>
       <div class="card-title">Folder Structure</div>
       <div class="card-body folder-tree">${tree || "No structure suggested."}</div>
     </div>
@@ -347,7 +234,7 @@ function buildRoadmapCard(bp) {
     .join("");
   return el(`
     <div class="bento-card card-roadmap">
-      <div class="card-icon"><i data-lucide="map"></i></div>
+      <div class="card-icon">🗺️</div>
       <div class="card-title">Roadmap</div>
       <div class="card-body roadmap-list">${list || "No roadmap suggested."}</div>
     </div>
@@ -364,7 +251,7 @@ function buildFeaturesCard(bp) {
     .join("");
   return el(`
     <div class="bento-card card-features">
-      <div class="card-icon"><i data-lucide="check-circle-2"></i></div>
+      <div class="card-icon">✅</div>
       <div class="card-title">Features</div>
       <div class="card-body feature-list">${list || "No features suggested."}</div>
     </div>
@@ -390,7 +277,7 @@ function buildApisCard(bp) {
     .join("");
   return el(`
     <div class="bento-card card-apis">
-      <div class="card-icon"><i data-lucide="plug"></i></div>
+      <div class="card-icon">🔌</div>
       <div class="card-title">Recommended APIs</div>
       <div class="card-body api-grid">${list || "No APIs suggested."}</div>
     </div>
@@ -404,7 +291,7 @@ function buildChallengesCard(bp) {
     .join("");
   return el(`
     <div class="bento-card card-challenges">
-      <div class="card-icon"><i data-lucide="triangle-alert"></i></div>
+      <div class="card-icon">⚠️</div>
       <div class="card-title">Challenges</div>
       <div class="card-body challenge-list">${list || "No challenges identified."}</div>
     </div>
@@ -418,40 +305,9 @@ function buildTipsCard(bp) {
     .join("");
   return el(`
     <div class="bento-card card-tips">
-      <div class="card-icon"><i data-lucide="lightbulb"></i></div>
+      <div class="card-icon">💡</div>
       <div class="card-title">AI Tips</div>
       <div class="card-body tip-list">${list || "No tips available."}</div>
-    </div>
-  `);
-}
-
-function buildDeploymentCard(bp) {
-  const hosting = (bp.techStack && bp.techStack.hosting) || "your host";
-  const items = [
-    { label: "HTTPS enabled", checked: true },
-    { label: "Environment variables set", checked: true },
-    { label: `Database configured (${escapeHtml((bp.techStack && bp.techStack.database) || "DB")})`, checked: true },
-    { label: "API keys added", checked: true },
-    { label: `Custom domain on ${escapeHtml(hosting)}`, checked: false },
-    { label: "Monitoring / logging set up", checked: false },
-  ];
-
-  const list = items
-    .map((item, i) => {
-      const id = `deploy-check-${i}`;
-      return `
-      <label class="deployment-item" for="${id}">
-        <input type="checkbox" id="${id}" ${item.checked ? "checked" : ""} />
-        <span>${item.label}</span>
-      </label>`;
-    })
-    .join("");
-
-  return el(`
-    <div class="bento-card card-deployment">
-      <div class="card-icon"><i data-lucide="rocket"></i></div>
-      <div class="card-title">Deployment Checklist</div>
-      <div class="card-body deployment-list">${list}</div>
     </div>
   `);
 }
@@ -461,7 +317,7 @@ function buildDifficultyCard(bp) {
   const pct = diff * 10;
   return el(`
     <div class="bento-card card-difficulty">
-      <div class="card-icon"><i data-lucide="bar-chart-3"></i></div>
+      <div class="card-icon">📊</div>
       <div class="card-title">Overall Difficulty</div>
       <div class="card-body difficulty-overall">
         <div class="difficulty-ring" style="--pct:${pct}"><span>${diff}/10</span></div>
@@ -509,81 +365,7 @@ function attachTilt(card) {
 
 // ---------------- Export PDF ----------------
 
-if (exportBtn) exportBtn.addEventListener("click", exportPdf);
-else console.warn("[DevFlow AI] #export-btn not found in the DOM — check that index.html matches this index.js.");
-
-if (exportMdBtn) exportMdBtn.addEventListener("click", exportMarkdown);
-else console.warn("[DevFlow AI] #export-md-btn not found in the DOM — check that index.html matches this index.js.");
-
-function exportMarkdown() {
-  if (!currentBlueprint) return;
-  const bp = currentBlueprint;
-  const lines = [];
-
-  lines.push(`# DevFlow AI — ${currentProjectTitle || "Project Blueprint"}`);
-  lines.push("");
-  lines.push(`> "${currentIdea}"`);
-  lines.push("");
-
-  lines.push("## Summary");
-  lines.push(bp.summary || "—");
-  lines.push("");
-
-  lines.push("## Tech Stack");
-  Object.entries(bp.techStack || {}).forEach(([k, v]) => {
-    lines.push(`- **${capitalize(k)}:** ${v}`);
-  });
-  lines.push("");
-
-  lines.push("## Folder Structure");
-  lines.push("```");
-  (bp.folderStructure || []).forEach((item) => lines.push(item));
-  lines.push("```");
-  lines.push("");
-
-  lines.push("## Roadmap");
-  (bp.roadmap || []).forEach((p, i) => {
-    lines.push(`${i + 1}. **${p.phase || `Phase ${i + 1}`}** — ${p.title || ""}`);
-  });
-  lines.push("");
-
-  lines.push("## Features");
-  (bp.features || []).forEach((f) => lines.push(`- [x] ${f}`));
-  lines.push("");
-
-  lines.push("## Recommended APIs");
-  (bp.apis || []).forEach((a) => {
-    lines.push(`### ${a.name || ""}`);
-    lines.push(`- Purpose: ${a.purpose || ""}`);
-    lines.push(`- Free tier: ${a.freeTier || "N/A"}`);
-    if (a.docs) lines.push(`- Docs: ${a.docs}`);
-    lines.push(`- Difficulty: ${a.difficulty || 0}/10`);
-    lines.push("");
-  });
-
-  lines.push("## Challenges");
-  (bp.challenges || []).forEach((c) => lines.push(`- ${c}`));
-  lines.push("");
-
-  lines.push("## AI Tips");
-  (bp.aiTips || []).forEach((t) => lines.push(`- 💡 ${t}`));
-  lines.push("");
-
-  lines.push("## Overall Difficulty");
-  lines.push(`**${bp.difficulty || 5} / 10**`);
-  lines.push("");
-
-  const markdown = lines.join("\n");
-  const blob = new Blob([markdown], { type: "text/markdown" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "devflow-ai-blueprint.md";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+exportBtn.addEventListener("click", exportPdf);
 
 async function exportPdf() {
   if (!currentBlueprint) return;
@@ -603,7 +385,7 @@ async function exportPdf() {
   wrapper.style.width = "1100px";
 
   const title = document.createElement("h1");
-  title.textContent = `DevFlow AI — ${currentProjectTitle || "Project Blueprint"}`;
+  title.textContent = "DevFlow AI — Project Blueprint";
   title.style.color = "#fff";
   title.style.fontFamily = "Inter, sans-serif";
   title.style.marginBottom = "8px";

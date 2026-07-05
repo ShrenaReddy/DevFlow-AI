@@ -1,45 +1,93 @@
-# DevFlow-AI
 # 🚀 DevFlow AI
 
-> Transform your project ideas into complete software blueprints using Google's Gemini AI.
+> **Transform your project idea into a complete development blueprint using AI.**
 
-DevFlow AI is an AI-powered web application that generates a complete project development plan from a simple idea. It provides a recommended tech stack, folder structure, roadmap, features, APIs, challenges, AI tips, and an overall difficulty estimate.
+DevFlow AI is an AI-powered project planning platform that helps developers convert a simple idea into a structured software development roadmap. It generates project summaries, recommended tech stacks, folder structures, APIs, architecture diagrams, implementation roadmaps, AI guidance, and much more—all in a beautiful modern dashboard.
 
 ---
 
 ## ✨ Features
 
-- 🧠 AI-generated project blueprint
-- 🛠️ Recommended tech stack
-- 📁 Folder structure generation
-- 🗺️ Development roadmap
-- ✅ Key feature suggestions
-- 🔌 Third-party API recommendations
-- ⚠️ Technical challenges
-- 💡 AI implementation tips
-- 📊 Project difficulty estimation
-- 📄 Export blueprint as PDF
-- 🎨 Modern Glassmorphism UI
+### 🤖 AI Project Blueprint
+Generate a complete software development blueprint from a single project idea.
+
+Includes:
+- Project Summary
+- Recommended Tech Stack
+- Folder Structure
+- Development Roadmap
+- Core Features
+- Recommended APIs
+- Challenges
+- AI Implementation Tips
+- Project Difficulty Score
 
 ---
 
-### Landing Page
+### 🏗 Architecture Diagram
 
-![Landing Page](screenshots/landing_page.png)
-
-### Generated Blueprint
-
-![Blueprint](screenshots/blueprint.png)
+Automatically generates a visual architecture diagram showing how the frontend, backend, database, and APIs interact.
 
 ---
 
-## 🛠️ Tech Stack
+
+### 📄 Export Options
+
+Download your blueprint as:
+
+- PDF
+- Markdown (.md)
+
+Perfect for documentation or GitHub projects.
+
+---
+
+### 📋 Deployment Checklist
+
+DevFlow AI includes a built-in **Deployment Checklist** to help developers ensure their project is ready for production. Before deployment, users can review a checklist of essential tasks, making the deployment process more organized and reducing the chances of common configuration errors.
+
+The checklist includes:
+
+- ✅ Environment variables configured
+- ✅ API keys added securely
+- ✅ Database connection verified
+- ✅ Production build completed
+- ✅ Hosting platform configured
+- ✅ Security and HTTPS checks
+- ✅ Final deployment readiness verification
+
+This feature helps developers confidently deploy their applications by following a structured pre-deployment workflow.
+
+### 🎨 Modern UI
+
+Designed with inspiration from:
+
+- Linear
+- Notion
+- Apple
+- Glassmorphism
+
+Features include:
+
+- Responsive Bento Dashboard
+- Lucide Icons
+- Smooth Animations
+- Interactive Cards
+- Glassmorphism UI
+- Premium Hover Effects
+- Loading Animations
+- Deployment Checklist
+
+---
+
+## 🛠 Tech Stack
 
 ### Frontend
 
 - HTML5
 - CSS3
 - JavaScript (ES6)
+- Lucide Icons
 
 ### Backend
 
@@ -48,12 +96,11 @@ DevFlow AI is an AI-powered web application that generates a complete project de
 
 ### AI
 
-- Google Gemini API
+- Google Gemini 2.5 Flash API
 
-### Libraries
+### Deployment
 
-- html2pdf.js
-- dotenv
+- Render
 
 ---
 
@@ -64,23 +111,24 @@ DevFlow-AI/
 │
 ├── frontend/
 │   ├── index.html
-│   ├── style.css
-│   ├── script.js
+│   ├── index.css
+│   ├── index.js
+│   └── assets/
 │
 ├── server.js
 ├── package.json
-├── .gitignore
+├── .env
 └── README.md
 ```
 
 ---
 
-## ⚙️ Installation
+## ⚙ Installation
 
 Clone the repository
 
 ```bash
-git clone https://github.com/YourUsername/DevFlow-AI.git
+git clone https://github.com/YOUR_USERNAME/DevFlow-AI.git
 ```
 
 Go inside the project
@@ -103,13 +151,13 @@ GEMINI_MODEL=gemini-2.5-flash
 PORT=3000
 ```
 
-Run the server
+Run
 
 ```bash
 npm start
 ```
 
-Open
+Visit
 
 ```
 http://localhost:3000
@@ -117,36 +165,50 @@ http://localhost:3000
 
 ---
 
-## 🔑 Environment Variables
+## 📸 Screenshots
 
-| Variable | Description |
-|----------|-------------|
-| GEMINI_API_KEY | Your Google Gemini API Key |
-| GEMINI_MODEL | Gemini model name |
-| PORT | Server port |
+### Landing Page
+
+![Landing Page Screenshot](screenshots/landing_page.png)
 
 ---
 
-## 🚀 Deployment
+### Generated Blueprint Dashboard
 
-This project can be deployed on:
-
-- Render
-- Railway
-- Vercel (Frontend)
-- Netlify (Frontend)
+![Blueprint Dashboard Screenshot](screenshots/summary_techstack.png)
 
 ---
 
-## 🎯 Future Improvements
 
-- User authentication
-- Save previous blueprints
-- Multiple export formats
-- Dark/Light theme
-- Project sharing
-- Database integration
-- AI chat assistant
+### RoadMap, Features and Folder Structure
+
+![RoadMap, Features Screenshot](screenshots/roadmap_features.png)
+
+---
+
+## 🎯 Why DevFlow AI?
+
+Developers often spend hours deciding:
+
+- Which tech stack to use
+- Folder structure
+- APIs
+- Development roadmap
+- Deployment strategy
+
+DevFlow AI generates a complete project plan within seconds, allowing developers to focus on building instead of planning.
+
+---
+
+## 🚀 Future Improvements
+
+- Multiple Blueprint Templates
+- Authentication
+- Blueprint History
+- Team Collaboration
+- Dark / Light Themes
+- Project Versioning
+- Multiple AI Model Support
 
 ---
 
@@ -154,6 +216,6 @@ This project can be deployed on:
 
 **Shrena Reddy**
 
-GitHub: https://github.com/ShrenaReddy
+Developed as a submission for the **Being Infinity AI Hackathon**, showcasing the use of Generative AI to simplify software project planning and architecture design.
 
 ---

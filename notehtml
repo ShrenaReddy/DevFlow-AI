@@ -8,7 +8,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="index.css" />
-<script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
 
@@ -29,7 +28,7 @@
     <div class="nav-links">
       <a href="#about">About</a>
       <a href="#features">Features</a>
-      <a href="https://github.com" target="_blank" rel="noopener">Github</a>
+      <a href="#how-it-works">How It Works</a>
     </div>
   </nav>
 
@@ -105,11 +104,11 @@
       </div>
     </section>
 
-    <div id="about" class="scroll-anchor"></div>
+    <div id="how-it-works" class="scroll-anchor"></div>
 
-    <!-- ABOUT SECTION -->
+    <!-- HOW IT WORKS SECTION -->
     <section class="section">
-      <h2 class="section-title">Why <span class="grad-text">DevFlow AI</span></h2>
+      <h2 class="section-title">Features <span class="grad-text"></span></h2>
       <div class="about-grid">
         <div class="about-card">
           <i class="fa-solid fa-diagram-project"></i>
@@ -225,38 +224,17 @@
   <div id="dashboard-view" class="view dashboard hidden">
     <div class="dashboard-header">
       <div>
-        <h2>DevFlow <span class="grad-text">AI</span></h2>
+        <button id="back-btn" class="btn-back">← New Blueprint</button>
+        <h2>Your Blueprint</h2>
         <p id="project-idea-echo" class="idea-echo"></p>
-        <div class="dashboard-meta">
-          <div class="meta-item">
-            <span class="meta-label">Project</span>
-            <span id="meta-project" class="meta-value">—</span>
-          </div>
-          <div class="meta-item">
-            <span class="meta-label">Generated in</span>
-            <span id="meta-duration" class="meta-value">—</span>
-          </div>
-          <div class="meta-item">
-            <span class="meta-label">Last Updated</span>
-            <span id="meta-updated" class="meta-value">—</span>
-          </div>
-        </div>
       </div>
-      <div class="header-actions">
-        <button id="export-md-btn" class="btn-export-secondary">
-          <i class="fa-solid fa-file-lines"></i> Export Markdown
-        </button>
-        <button id="export-btn" class="btn-export">
-          <i class="fa-solid fa-download"></i> Export PDF
-        </button>
-        <button id="new-blueprint-btn" class="btn-new">
-          <i class="fa-solid fa-plus"></i> New Blueprint
-        </button>
-      </div>
+      <button id="export-btn" class="btn-export">
+        <i class="fa-solid fa-download"></i> Export Blueprint
+      </button>
     </div>
 
     <div id="bento-grid" class="bento-grid">
-      <!-- Cards injected by index.js -->
+      <!-- Cards injected by script.js -->
     </div>
   </div>
 

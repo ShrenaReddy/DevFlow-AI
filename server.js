@@ -1,857 +1,209 @@
 // ==========================================================
-// DevFlow AI
-// Backend Server
-// Express + Gemini API
+// DevFlow AI — Backend Server
+// Express server that proxies blueprint generation requests
+// to the Google Gemini API and serves the static frontend.
 // ==========================================================
 
 require("dotenv").config();
-
 const express = require("express");
 const path = require("path");
 
 const app = express();
-
 const PORT = process.env.PORT || 3000;
-
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const FALLBACK_MODEL = "gemini-2.0-flash"; // used if the primary model is overloaded
+const GEMINI_URL_FOR = (model) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
-const GEMINI_MODEL =
-  process.env.GEMINI_MODEL || "gemini-2.5-flash";
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-const GEMINI_URL =
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// Calls Gemini with retries (exponential backoff) for transient errors (429/503),
+// then falls back to a secondary model if the primary is still unavailable.
+async function callGemini(prompt, { maxRetries = 2, json = true } = {}) {
+  const models = [GEMINI_MODEL, FALLBACK_MODEL].filter(
+    (m, i, arr) => arr.indexOf(m) === i // dedupe in case both env values match
+  );
 
-app.use(express.json({ limit: "2mb" }));
+  let lastError;
 
-app.use(express.urlencoded({ extended: true }));
+  for (const model of models) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(`${GEMINI_URL_FOR(model)}?key=${GEMINI_API_KEY}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: json
+              ? { temperature: 0.7, responseMimeType: "application/json" }
+              : { temperature: 0.7 },
+          }),
+        });
 
+        if (response.ok) {
+          const data = await response.json();
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!text) throw new Error("Empty response from Gemini API.");
+          return text;
+        }
+
+        // Only retry on transient errors; anything else (400, 401, 403) fails immediately.
+        const transient = response.status === 429 || response.status === 503;
+        const errText = await response.text();
+        lastError = new Error(`Gemini API (${model}) returned ${response.status}: ${errText}`);
+
+        if (!transient) throw lastError;
+
+        console.warn(
+          `[DevFlow AI] ${model} returned ${response.status} (attempt ${attempt + 1}/${maxRetries + 1}), retrying...`
+        );
+        if (attempt < maxRetries) await sleep(500 * Math.pow(2, attempt)); // 500ms, 1s, 2s...
+      } catch (err) {
+        lastError = err;
+        if (attempt < maxRetries) await sleep(500 * Math.pow(2, attempt));
+      }
+    }
+    console.warn(`[DevFlow AI] Exhausted retries on ${model}, trying next model if available...`);
+  }
+
+  throw lastError || new Error("Gemini API failed for an unknown reason.");
+}
+
+app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "frontend")));
 
+// ---------------- Prompt builder ----------------
 
-// --------------------------------------------------
-// Health Check
-// --------------------------------------------------
-
-app.get("/api/health", (req, res) => {
-
-    res.json({
-        status: "online",
-        server: "DevFlow AI",
-
-        geminiConfigured: Boolean(GEMINI_API_KEY),
-
-        model: GEMINI_MODEL,
-
-        timestamp: new Date().toISOString()
-    });
-
-});
-
-
-// --------------------------------------------------
-// Sleep helper
-// --------------------------------------------------
-
-function sleep(ms){
-
-    return new Promise(resolve=>setTimeout(resolve,ms));
-
-}
-
-
-// --------------------------------------------------
-// JSON extractor
-// Gemini sometimes wraps JSON in markdown.
-// This safely extracts it.
-// --------------------------------------------------
-
-function extractJSON(text){
-
-    if(!text){
-
-        throw new Error("Gemini returned an empty response.");
-
-    }
-
-    text=text
-        .replace(/```json/g,"")
-        .replace(/```/g,"")
-        .trim();
-
-    const start=text.indexOf("{");
-
-    const end=text.lastIndexOf("}");
-
-    if(start===-1 || end===-1){
-
-        throw new Error("No JSON found in Gemini response.");
-
-    }
-
-    return JSON.parse(
-        text.substring(start,end+1)
-    );
-
-}
-
-
-// --------------------------------------------------
-// Blueprint validator
-// Ensures every required field exists.
-// --------------------------------------------------
-
-function validateBlueprint(bp){
-
-    return{
-
-        summary:
-            bp.summary || "",
-
-        techStack:
-            bp.techStack || {},
-
-        folderStructure:
-            bp.folderStructure || [],
-
-        roadmap:
-            bp.roadmap || [],
-
-        features:
-            bp.features || [],
-
-        apis:
-            bp.apis || [],
-
-        challenges:
-            bp.challenges || [],
-
-        aiTips:
-            bp.aiTips || [],
-
-        difficulty:
-            bp.difficulty || 5
-
-    };
-
-}
-// --------------------------------------------------
-// Prompt Builder
-// --------------------------------------------------
-
-function buildPrompt(
-    idea,
-    {
-        complexity = "Intermediate",
-        focus = "Fast Development",
-        teamSize = "Solo Developer"
-    } = {}
-){
-
-return `
-You are an expert software architect with 15+ years of experience.
-
-A user will give you a software project idea.
-
-Your task is to create a COMPLETE project blueprint.
-
-Return ONLY valid JSON.
-
-Do NOT use markdown.
-
-Do NOT explain anything.
-
-Schema:
+function buildPrompt(idea, { complexity, focus, teamSize } = {}) {
+  return `You are a senior software architect. A user will describe a project idea, and you must
+respond with ONLY a single valid JSON object (no markdown fences, no commentary, no extra text)
+that matches this exact schema:
 
 {
-  "summary": string,
-
-  "techStack": {
-      "frontend": string,
-      "backend": string,
-      "database": string,
-      "hosting": string
-  },
-
-  "folderStructure":[string],
-
-  "roadmap":[
-      {
-        "phase":string,
-        "title":string
-      }
-  ],
-
-  "features":[string],
-
-  "apis":[
-      {
-        "name":string,
-        "purpose":string,
-        "freeTier":string,
-        "docs":string,
-        "difficulty":number
-      }
-  ],
-
-  "challenges":[string],
-
-  "aiTips":[string],
-
-  "difficulty":number
+  "summary": string (2-3 sentences describing the project and its core value),
+  "techStack": { "frontend": string, "backend": string, "database": string, "hosting": string },
+  "folderStructure": string[] (10-16 realistic file/folder paths for this project, using trailing "/" for folders),
+  "roadmap": [ { "phase": string (e.g. "Phase 1"), "title": string (short milestone name) } ] (4-6 items, in order),
+  "features": string[] (5-8 short feature names, 1-3 words each),
+  "apis": [ { "name": string, "purpose": string (short), "freeTier": string (short, e.g. "Yes, 10k req/mo"), "docs": string (a real documentation URL), "difficulty": number (1-10) } ] (2-4 relevant third-party APIs for THIS project, not for building DevFlow AI itself),
+  "challenges": string[] (3-5 short technical challenges specific to this project),
+  "aiTips": string[] (4-6 short, actionable implementation tips),
+  "difficulty": number (1-10, overall project difficulty)
 }
-
 
 Rules:
+- Base every field on the user's actual idea below — be specific, not generic.
+- Keep every string concise (the UI has limited space).
+- folderStructure should reflect the chosen tech stack.
+- Respond with raw JSON only. Do not wrap it in \`\`\`json or any other text.
 
-1.
-Generate ONLY JSON.
+User's project idea:
+"""
+${idea}
+"""
 
-2.
-No markdown.
-
-3.
-No code blocks.
-
-4.
-No explanations.
-
-5.
-Every recommendation should match THIS project.
-
-6.
-Folder structure should contain
-12-18 realistic folders/files.
-
-7.
-Roadmap should contain
-6 phases.
-
-8.
-Features should contain
-8-12 features.
-
-9.
-Recommend REAL APIs.
-
-10.
-Use actual documentation links.
-
-11.
-Difficulty should be between
-1 and 10.
-
-12.
-Keep the summary under 80 words.
-
-Project Idea:
-
-"${idea}"
-
-Preferences
-
-Complexity:
-${complexity}
-
-Focus:
-${focus}
-
-Team:
-${teamSize}
-
-`;
+Additional preferences to tailor the plan around:
+- Target complexity level: ${complexity || "Intermediate"}
+- Primary focus: ${focus || "Speed of shipping"}
+- Team size: ${teamSize || "Solo developer"}`;
 }
 
+// ---------------- Fallback (used if Gemini is unreachable / no key) ----------------
 
-
-// --------------------------------------------------
-// Generic fallback
-// Used only if Gemini completely fails.
-// --------------------------------------------------
-
-function fallbackBlueprint(idea){
-
-return{
-
-summary:
-`A project blueprint for "${idea}". Gemini AI is currently unavailable, so this generic development plan is being shown. Retry after a few moments for a personalized AI-generated blueprint.`,
-
-techStack:{
-
-frontend:"React",
-
-backend:"Node.js + Express",
-
-database:"MongoDB",
-
-hosting:"Render"
-
-},
-
-folderStructure:[
-
-"frontend/",
-
-"frontend/index.html",
-
-"frontend/style.css",
-
-"frontend/script.js",
-
-"backend/",
-
-"backend/routes/",
-
-"backend/controllers/",
-
-"backend/models/",
-
-"backend/utils/",
-
-"backend/middleware/",
-
-".env",
-
-"package.json"
-
-],
-
-roadmap:[
-
-{
-phase:"Phase 1",
-title:"Project Setup"
-},
-
-{
-phase:"Phase 2",
-title:"Authentication"
-},
-
-{
-phase:"Phase 3",
-title:"Core Features"
-},
-
-{
-phase:"Phase 4",
-title:"Database Integration"
-},
-
-{
-phase:"Phase 5",
-title:"Testing"
-},
-
-{
-phase:"Phase 6",
-title:"Deployment"
+function fallbackBlueprint(idea) {
+  return {
+    summary: `A web application built around the idea: "${idea}". This blueprint is a generic starting point — connect a valid GEMINI_API_KEY to generate a fully tailored plan.`,
+    techStack: { frontend: "React", backend: "Node.js", database: "MongoDB", hosting: "Render" },
+    folderStructure: [
+      "client/",
+      "client/src/",
+      "client/src/components/",
+      "client/src/pages/",
+      "server/",
+      "server/routes/",
+      "server/controllers/",
+      "server/models/",
+      "server/middleware/",
+      "public/",
+      "package.json",
+      ".env",
+    ],
+    roadmap: [
+      { phase: "Phase 1", title: "Authentication" },
+      { phase: "Phase 2", title: "Core Database Models" },
+      { phase: "Phase 3", title: "Dashboard & UI" },
+      { phase: "Phase 4", title: "Deployment" },
+    ],
+    features: ["Login", "Payments", "Admin", "Search", "Notifications"],
+    apis: [
+      {
+        name: "Gemini API",
+        purpose: "AI-powered content generation",
+        freeTier: "Yes, generous free quota",
+        docs: "https://ai.google.dev/gemini-api/docs",
+        difficulty: 4,
+      },
+    ],
+    challenges: [
+      "Designing a scalable data model",
+      "Handling authentication securely",
+      "Keeping the UI responsive under load",
+    ],
+    aiTips: [
+      "Start with authentication.",
+      "Build APIs before UI.",
+      "Use JWT for stateless auth.",
+      "Optimize images before shipping.",
+    ],
+    difficulty: 5,
+  };
 }
 
-],
+// ---------------- Robust JSON extraction ----------------
 
-features:[
-
-"User Authentication",
-
-"Responsive UI",
-
-"Dashboard",
-
-"Search",
-
-"Notifications",
-
-"Profile Management",
-
-"Settings",
-
-"Analytics"
-
-],
-
-apis:[
-
-{
-
-name:"REST API",
-
-purpose:"Backend Communication",
-
-freeTier:"Unlimited",
-
-docs:"https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
-
-difficulty:2
-
+function extractJson(text) {
+  const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("No JSON object found in model response.");
+  return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-],
-
-challenges:[
-
-"Authentication",
-
-"Database Design",
-
-"Performance Optimization",
-
-"Responsive UI"
-
-],
-
-aiTips:[
-
-"Build the backend first.",
-
-"Keep components reusable.",
-
-"Deploy early.",
-
-"Use Git branches.",
-
-"Write reusable APIs."
-
-],
-
-difficulty:5
-
-};
-
-}
-// --------------------------------------------------
-// Gemini API Caller
-// Retries automatically for temporary failures.
-// --------------------------------------------------
-
-async function callGemini(prompt) {
-
-    const MAX_RETRIES = 5;
-
-    let lastError = null;
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-
-        console.log(`\n[Gemini] Attempt ${attempt}/${MAX_RETRIES}`);
-
-        try {
-
-            const controller = new AbortController();
-
-            const timeout = setTimeout(() => {
-                controller.abort();
-            }, 30000); // 30 seconds timeout
-
-            const response = await fetch(
-                `${GEMINI_URL}?key=${GEMINI_API_KEY}`,
-                {
-                    method: "POST",
-
-                    signal: controller.signal,
-
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-
-                    body: JSON.stringify({
-
-                        contents: [
-                            {
-                                role: "user",
-                                parts: [
-                                    {
-                                        text: prompt
-                                    }
-                                ]
-                            }
-                        ],
-
-                        generationConfig: {
-
-                            temperature: 0.7,
-
-                            topP: 0.95,
-
-                            topK: 40,
-
-                            maxOutputTokens: 8192,
-
-                            responseMimeType: "application/json"
-
-                        }
-
-                    })
-
-                }
-            );
-
-            clearTimeout(timeout);
-
-            // ----------------------------
-            // Success
-            // ----------------------------
-
-            if (response.ok) {
-
-                const json = await response.json();
-
-                return json;
-
-            }
-
-            // ----------------------------
-            // Read error body
-            // ----------------------------
-
-            const errorText = await response.text();
-
-            console.error(
-                "\nGemini Error:",
-                response.status,
-                errorText
-            );
-
-            lastError = new Error(
-                `Gemini returned ${response.status}`
-            );
-
-            // ----------------------------
-            // Retry on Busy / Rate Limit
-            // ----------------------------
-
-            if (
-                response.status === 429 ||
-                response.status === 503
-            ) {
-
-                const waitTime =
-                    Math.min(attempt * 3000, 12000);
-
-                console.log(
-                    `Retrying in ${waitTime / 1000}s...`
-                );
-
-                await sleep(waitTime);
-
-                continue;
-
-            }
-
-            // ----------------------------
-            // Invalid API Key
-            // ----------------------------
-
-            if (
-                response.status === 401 ||
-                response.status === 403
-            ) {
-
-                throw new Error(
-                    "Invalid Gemini API Key."
-                );
-
-            }
-
-            throw lastError;
-
-        }
-
-        catch(err){
-
-            lastError = err;
-
-            console.error(
-                "[Gemini]",
-                err.message
-            );
-
-            // Fetch timeout
-            if(
-                err.name==="AbortError"
-            ){
-
-                console.log(
-                    "Gemini timed out."
-                );
-
-            }
-
-            if(attempt<MAX_RETRIES){
-
-                await sleep(
-                    attempt*2500
-                );
-
-                continue;
-
-            }
-
-        }
-
-    }
-
-    throw lastError;
-
-}
-// --------------------------------------------------
-// Generate Blueprint Route
-// --------------------------------------------------
+// ---------------- Route ----------------
 
 app.post("/api/generate", async (req, res) => {
+  const { idea, complexity, focus, teamSize } = req.body || {};
 
-    try {
+  if (!idea || typeof idea !== "string" || idea.trim().length < 8) {
+    return res.status(400).json({ error: "Please provide a project idea (min 8 characters)." });
+  }
 
-        const {
-            idea,
-            complexity,
-            focus,
-            teamSize
-        } = req.body || {};
+  if (!GEMINI_API_KEY) {
+    console.warn("[DevFlow AI] GEMINI_API_KEY is not set — returning fallback blueprint.");
+    return res.json(fallbackBlueprint(idea.trim()));
+  }
 
-        // ----------------------------
-        // Validate input
-        // ----------------------------
-
-        if (
-            !idea ||
-            typeof idea !== "string" ||
-            idea.trim().length < 8
-        ) {
-
-            return res.status(400).json({
-                error: "Please enter a valid project idea."
-            });
-
-        }
-
-        // ----------------------------
-        // API key missing
-        // ----------------------------
-
-        if (!GEMINI_API_KEY) {
-
-            console.warn(
-                "[DevFlow AI] No GEMINI_API_KEY found."
-            );
-
-            return res.json(
-                fallbackBlueprint(idea)
-            );
-
-        }
-
-        console.log(
-            "\n=============================="
-        );
-
-        console.log(
-            "Generating Blueprint..."
-        );
-
-        console.log(
-            "Idea:",
-            idea
-        );
-
-        console.log(
-            "Model:",
-            GEMINI_MODEL
-        );
-
-        console.log(
-            "==============================\n"
-        );
-
-        // ----------------------------
-        // Build Prompt
-        // ----------------------------
-
-        const prompt = buildPrompt(
-            idea,
-            {
-                complexity,
-                focus,
-                teamSize
-            }
-        );
-
-        // ----------------------------
-        // Call Gemini
-        // ----------------------------
-
-        const geminiResponse =
-            await callGemini(prompt);
-
-        // ----------------------------
-        // Extract text
-        // ----------------------------
-
-        const text =
-            geminiResponse
-                ?.candidates?.[0]
-                ?.content?.parts?.[0]
-                ?.text;
-
-        if (!text) {
-
-            throw new Error(
-                "Gemini returned an empty response."
-            );
-
-        }
-
-        // ----------------------------
-        // Parse JSON
-        // ----------------------------
-
-        let blueprint;
-
-        try {
-
-            blueprint =
-                extractJSON(text);
-
-        }
-
-        catch(parseError){
-
-            console.error(
-                "\nInvalid JSON from Gemini:\n"
-            );
-
-            console.error(text);
-
-            throw new Error(
-                "Gemini returned malformed JSON."
-            );
-
-        }
-
-        // ----------------------------
-        // Validate blueprint
-        // ----------------------------
-
-        blueprint =
-            validateBlueprint(
-                blueprint
-            );
-
-        console.log(
-            "Blueprint generated successfully.\n"
-        );
-
-        return res.json(
-            blueprint
-        );
-
-    }
-
-    catch(error){
-
-        console.error(
-            "\n================================="
-        );
-
-        console.error(
-            "Blueprint Generation Failed"
-        );
-
-        console.error(
-            error.message
-        );
-
-        console.error(
-            "=================================\n"
-        );
-
-        // Last safety fallback
-        return res.json(
-
-            fallbackBlueprint(
-                req.body.idea || "Untitled Project"
-            )
-
-        );
-
-    }
-
-});
-// --------------------------------------------------
-// Default Route
-// --------------------------------------------------
-
-app.get("/", (req, res) => {
-
-    res.sendFile(
-        path.join(__dirname, "frontend", "index.html")
-    );
-
+  try {
+    const prompt = buildPrompt(idea.trim(), { complexity, focus, teamSize });
+    const text = await callGemini(prompt);
+    const blueprint = extractJson(text);
+    res.json(blueprint);
+  } catch (err) {
+    console.error("[DevFlow AI] Generation failed after retries:", err.message);
+    res.status(200).json(fallbackBlueprint(idea.trim()));
+  }
 });
 
-
-// --------------------------------------------------
-// 404 Handler
-// --------------------------------------------------
-
-app.use((req, res) => {
-
-    res.status(404).json({
-
-        success: false,
-
-        error: "Route not found."
-
-    });
-
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, geminiConfigured: Boolean(GEMINI_API_KEY) });
 });
-
-
-// --------------------------------------------------
-// Global Error Handler
-// --------------------------------------------------
-
-app.use((err, req, res, next) => {
-
-    console.error("\n========== SERVER ERROR ==========\n");
-
-    console.error(err);
-
-    console.error("\n==================================\n");
-
-    res.status(500).json({
-
-        success: false,
-
-        error: "Internal Server Error"
-
-    });
-
-});
-
-
-// --------------------------------------------------
-// Start Server
-// --------------------------------------------------
 
 app.listen(PORT, () => {
-
-    console.log("\n====================================");
-
-    console.log("🚀 DevFlow AI Started Successfully");
-
-    console.log("====================================");
-
-    console.log(`Server : http://localhost:${PORT}`);
-
-    console.log(`Model  : ${GEMINI_MODEL}`);
-
-    console.log(
-        `Gemini Key : ${
-            GEMINI_API_KEY
-                ? "Configured ✅"
-                : "Missing ❌"
-        }`
-    );
-
-    console.log("====================================\n");
-
+  console.log(`\n  🚀 DevFlow AI running at http://localhost:${PORT}\n`);
+  if (!GEMINI_API_KEY) {
+    console.log("  ⚠️  No GEMINI_API_KEY found in .env — using fallback blueprints.\n");
+  }
 });
