@@ -23,13 +23,9 @@ DevFlow AI is an AI-powered web application that generates a complete project de
 
 ---
 
-## 📸 Screenshots
-
-> Add screenshots of your project here.
-
 ### Landing Page
 
-![Landing Page](screenshots/landing-page.png)
+![Landing Page](screenshots/landing_page.png)
 
 ### Generated Blueprint
 
